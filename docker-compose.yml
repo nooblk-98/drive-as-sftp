@@ -13,8 +13,6 @@ services:
     volumes:
       # Mount credentials and token files
       - ./credentials.json:/app/credentials.json:ro
-      # Mount config directory for .env or config files
-      - ./config:/app/config
       # Mount logs directory to persist logs
       - ./logs:/app/logs
     environment:
