@@ -15,10 +15,51 @@ from googleapiclient.errors import HttpError
 class GoogleDriveFileSystem:
     """Provides filesystem-like interface to Google Drive"""
     
-    def __init__(self, service):
+    def __init__(self, service, cache_timeout=30):
         self.service = service
-        self._cache = {}
-        self._cache_timeout = 60  # Cache timeout in seconds
+        self._path_cache = {}  # Cache for path -> file_info
+        self._dir_cache = {}   # Cache for directory listings
+        self._cache_timeout = cache_timeout
+    
+    def _is_cache_valid(self, cache_time):
+        """Check if cache entry is still valid"""
+        return (time.time() - cache_time) < self._cache_timeout
+    
+    def _get_cached_path(self, path):
+        """Get cached file info by path"""
+        if path in self._path_cache:
+            file_info, cache_time = self._path_cache[path]
+            if self._is_cache_valid(cache_time):
+                return file_info
+        return None
+    
+    def _cache_path(self, path, file_info):
+        """Cache file info for a path"""
+        self._path_cache[path] = (file_info, time.time())
+    
+    def _get_cached_dir(self, path):
+        """Get cached directory listing"""
+        if path in self._dir_cache:
+            files, cache_time = self._dir_cache[path]
+            if self._is_cache_valid(cache_time):
+                return files
+        return None
+    
+    def _cache_dir(self, path, files):
+        """Cache directory listing"""
+        self._dir_cache[path] = (files, time.time())
+    
+    def invalidate_cache(self, path=None):
+        """Invalidate cache for a specific path or all cache"""
+        if path:
+            self._path_cache.pop(path, None)
+            self._dir_cache.pop(path, None)
+            # Also invalidate parent directory listing
+            parent = '/'.join(path.rstrip('/').split('/')[:-1]) or '/'
+            self._dir_cache.pop(parent, None)
+        else:
+            self._path_cache.clear()
+            self._dir_cache.clear()
     
     def _escape_query_value(self, value):
         """Escape special characters for Google Drive API query"""
@@ -29,13 +70,30 @@ class GoogleDriveFileSystem:
     
     def _get_file_by_path(self, path):
         """Get file/folder by path"""
+        # Check cache first
+        cached = self._get_cached_path(path)
+        if cached:
+            return cached
+        
         if path == '/' or path == '':
-            return {'id': 'root', 'name': '/', 'mimeType': 'application/vnd.google-apps.folder'}
+            root_info = {'id': 'root', 'name': '/', 'mimeType': 'application/vnd.google-apps.folder'}
+            self._cache_path(path, root_info)
+            return root_info
         
         parts = path.strip('/').split('/')
         parent_id = 'root'
+        current_path = ''
         
         for part in parts:
+            current_path = current_path + '/' + part if current_path else '/' + part
+            
+            # Check if this path segment is cached
+            cached = self._get_cached_path(current_path)
+            if cached:
+                parent_id = cached['id']
+                file_info = cached
+                continue
+            
             escaped_part = self._escape_query_value(part)
             query = f"name='{escaped_part}' and '{parent_id}' in parents and trashed=false"
             results = self.service.files().list(
@@ -47,8 +105,11 @@ class GoogleDriveFileSystem:
             if not files:
                 return None
             
-            parent_id = files[0]['id']
             file_info = files[0]
+            parent_id = file_info['id']
+            
+            # Cache this path segment
+            self._cache_path(current_path, file_info)
         
         return file_info
     
@@ -65,6 +126,11 @@ class GoogleDriveFileSystem:
     
     def list_directory(self, path):
         """List files in a directory"""
+        # Check cache first
+        cached = self._get_cached_dir(path)
+        if cached is not None:
+            return cached
+        
         file_info = self._get_file_by_path(path)
         if not file_info:
             return []
@@ -79,7 +145,17 @@ class GoogleDriveFileSystem:
             pageSize=1000
         ).execute()
         
-        return results.get('files', [])
+        files = results.get('files', [])
+        
+        # Cache the directory listing
+        self._cache_dir(path, files)
+        
+        # Also cache individual file paths
+        for file in files:
+            file_path = path.rstrip('/') + '/' + file['name']
+            self._cache_path(file_path, file)
+        
+        return files
     
     def get_file_stats(self, path):
         """Get file statistics (size, mtime, etc.)"""
@@ -154,6 +230,9 @@ class GoogleDriveFileSystem:
                     media_body=media,
                     fields='id'
                 ).execute()
+            
+            # Invalidate cache for this path and parent directory
+            self.invalidate_cache(path)
             return True
         except HttpError as e:
             print(f"Error writing file: {e}")
@@ -167,6 +246,8 @@ class GoogleDriveFileSystem:
         
         try:
             self.service.files().delete(fileId=file_info['id']).execute()
+            # Invalidate cache for this path and parent directory
+            self.invalidate_cache(path)
             return True
         except HttpError:
             return False
@@ -189,6 +270,8 @@ class GoogleDriveFileSystem:
         
         try:
             self.service.files().create(body=file_metadata, fields='id').execute()
+            # Invalidate cache for parent directory
+            self.invalidate_cache(path)
             return True
         except HttpError:
             return False
@@ -206,6 +289,9 @@ class GoogleDriveFileSystem:
                 fileId=file_info['id'],
                 body={'name': new_name}
             ).execute()
+            # Invalidate cache for both old and new paths
+            self.invalidate_cache(old_path)
+            self.invalidate_cache(new_path)
             return True
         except HttpError:
             return False

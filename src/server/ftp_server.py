@@ -224,11 +224,11 @@ class GoogleDriveFTPFilesystem(AbstractedFS):
         return stats.st_mtime
 
 
-def create_ftp_server(host, port, username, password, gdrive_service):
+def create_ftp_server(host, port, username, password, gdrive_service, cache_timeout=30):
     """Create and configure FTP server"""
     
-    # Create Google Drive filesystem
-    gdrive_fs = GoogleDriveFileSystem(gdrive_service)
+    # Create Google Drive filesystem with caching
+    gdrive_fs = GoogleDriveFileSystem(gdrive_service, cache_timeout=cache_timeout)
     
     # Create authorizer
     authorizer = DummyAuthorizer()
