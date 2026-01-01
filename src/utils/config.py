@@ -20,6 +20,7 @@ class Config:
         self.ftp_password = os.getenv('FTP_PASSWORD', 'admin123')
         self.ftp_max_connections = int(os.getenv('FTP_MAX_CONNECTIONS', '256'))
         self.ftp_max_connections_per_ip = int(os.getenv('FTP_MAX_CONNECTIONS_PER_IP', '5'))
+        self.ftp_root_path = os.getenv('FTP_ROOT_PATH', '/').strip()
         
         # Google Drive Settings
         self.credentials_file = os.getenv('CREDENTIALS_FILE', 'credentials.json')
@@ -54,6 +55,7 @@ class Config:
         print(f"  Host: {self.ftp_host}")
         print(f"  Port: {self.ftp_port}")
         print(f"  Username: {self.ftp_username}")
+        print(f"  Root Path: {self.ftp_root_path}")
         print(f"  Max Connections: {self.ftp_max_connections}")
         print(f"  Max Connections Per IP: {self.ftp_max_connections_per_ip}")
         print(f"\nGoogle Drive Configuration:")

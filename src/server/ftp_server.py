@@ -6,6 +6,7 @@ import os
 import io
 import errno
 import tempfile
+import time
 from pyftpdlib.authorizers import DummyAuthorizer
 from pyftpdlib.handlers import FTPHandler
 from pyftpdlib.servers import FTPServer
@@ -25,9 +26,13 @@ class GoogleDriveFTPFilesystem(AbstractedFS):
     
     def ftp2fs(self, ftppath):
         """Convert FTP path to filesystem path"""
+        # Resolve relative paths against current working directory.
+        if not ftppath.startswith('/'):
+            ftppath = os.path.join(self.cwd, ftppath)
+        ftppath = os.path.normpath(ftppath).replace('\\', '/')
         if not ftppath.startswith('/'):
             ftppath = '/' + ftppath
-        return os.path.normpath(ftppath).replace('\\', '/')
+        return ftppath
     
     def fs2ftp(self, fspath):
         """Convert filesystem path to FTP path"""
@@ -52,7 +57,7 @@ class GoogleDriveFTPFilesystem(AbstractedFS):
         elif 'w' in mode or 'a' in mode:
             # Write mode - create temp file
             temp_file = tempfile.NamedTemporaryFile(mode='w+b', delete=False)
-            self._temp_files[filename] = temp_file.name
+            self._temp_files[temp_file.name] = fspath
             return temp_file
         else:
             err = OSError(f"Unsupported mode: {mode}")
@@ -61,20 +66,21 @@ class GoogleDriveFTPFilesystem(AbstractedFS):
     
     def close(self, filename, file_obj):
         """Close a file and upload if it was opened for writing"""
-        if filename in self._temp_files:
-            file_obj.close()
-            temp_path = self._temp_files[filename]
-            
-            # Upload to Google Drive
-            with open(temp_path, 'rb') as f:
-                fspath = self.ftp2fs(filename)
-                self.gdrive_fs.write_file(fspath, f)
-            
-            # Clean up temp file
-            os.unlink(temp_path)
-            del self._temp_files[filename]
-        else:
-            file_obj.close()
+        file_obj.close()
+
+    def handle_file_received(self, temp_path):
+        """Upload a completed temp file to Google Drive."""
+        fspath = self._temp_files.pop(temp_path, None)
+        if not fspath:
+            return
+
+        success = self.gdrive_fs.write_file(fspath, temp_path)
+        os.unlink(temp_path)
+
+        if not success:
+            err = OSError(f"Failed to upload file: {fspath}")
+            err.errno = errno.EIO
+            raise err
     
     def chdir(self, path):
         """Change current directory"""
@@ -222,17 +228,37 @@ class GoogleDriveFTPFilesystem(AbstractedFS):
         """Get modification time"""
         stats = self.stat(path)
         return stats.st_mtime
+    
+    def utime(self, path, timeval):
+        """Set access and modification times (Google Drive doesn't support this)"""
+        # MFMT can be sent immediately after STOR; Google Drive may be eventually consistent.
+        # Retry a few times, then succeed even if metadata isn't visible yet.
+        fspath = self.ftp2fs(path)
+        for _ in range(3):
+            stats = self.gdrive_fs.get_file_stats(fspath)
+            if stats:
+                return True
+            self.gdrive_fs.invalidate_cache(fspath)
+            time.sleep(0.2)
+        return True
+    
+    def chmod(self, path, mode):
+        """Change file permissions (Google Drive doesn't support this)"""
+        # Google Drive doesn't have Unix-style permissions
+        # Just silently succeed to avoid errors
+        pass
 
 
-def create_ftp_server(host, port, username, password, gdrive_service, cache_timeout=30):
+def create_ftp_server(host, port, username, password, gdrive_service, cache_timeout=30, root_path='/'):
     """Create and configure FTP server"""
     
-    # Create Google Drive filesystem with caching
-    gdrive_fs = GoogleDriveFileSystem(gdrive_service, cache_timeout=cache_timeout)
+    # Create Google Drive filesystem with caching and root path
+    gdrive_fs = GoogleDriveFileSystem(gdrive_service, cache_timeout=cache_timeout, root_path=root_path)
     
     # Create authorizer
     authorizer = DummyAuthorizer()
-    authorizer.add_user(username, password, '/', perm='elradfmw')
+    # Add permissions including 'T' so clients don't get privilege errors on MFMT.
+    authorizer.add_user(username, password, '/', perm='elradfmwMT')
     
     # Create custom filesystem class with Google Drive
     class CustomFilesystem(GoogleDriveFTPFilesystem):
@@ -242,6 +268,24 @@ def create_ftp_server(host, port, username, password, gdrive_service, cache_time
     # Create handler class
     class CustomHandler(FTPHandler):
         abstracted_fs = CustomFilesystem
+
+        def ftp_MFMT(self, path, timeval=None):
+            """Ignore MFMT to prevent client-side upload failures."""
+            self.respond("213 Modify time not applied")
+            return
+
+        def on_file_received(self, file):
+            try:
+                self.fs.handle_file_received(file)
+            except Exception as exc:
+                self.log(f"Upload failed for {file}: {exc}")
+
+        def on_incomplete_file_received(self, file):
+            try:
+                if os.path.exists(file):
+                    os.unlink(file)
+            except Exception as exc:
+                self.log(f"Failed to cleanup temp file {file}: {exc}")
     
     CustomHandler.authorizer = authorizer
     

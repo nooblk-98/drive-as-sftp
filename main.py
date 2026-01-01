@@ -70,7 +70,8 @@ def main():
             config.ftp_username,
             config.ftp_password,
             gdrive_service,
-            cache_timeout=config.cache_timeout
+            cache_timeout=config.cache_timeout,
+            root_path=config.ftp_root_path
         )
         
         # Set server limits

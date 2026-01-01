@@ -15,11 +15,45 @@ from googleapiclient.errors import HttpError
 class GoogleDriveFileSystem:
     """Provides filesystem-like interface to Google Drive"""
     
-    def __init__(self, service, cache_timeout=30):
+    def __init__(self, service, cache_timeout=30, root_path='/'):
         self.service = service
         self._path_cache = {}  # Cache for path -> file_info
         self._dir_cache = {}   # Cache for directory listings
         self._cache_timeout = cache_timeout
+        self.root_path = root_path.rstrip('/') if root_path != '/' else ''
+        self._root_folder_id = None
+    
+    def _get_root_folder_id(self):
+        """Get the folder ID for the configured root path"""
+        if self._root_folder_id:
+            return self._root_folder_id
+        
+        if not self.root_path:
+            self._root_folder_id = 'root'
+            return 'root'
+        
+        # Get the folder ID for the root path
+        root_info = self._get_file_by_path_internal(self.root_path, use_root_offset=False)
+        if root_info and root_info['mimeType'] == 'application/vnd.google-apps.folder':
+            self._root_folder_id = root_info['id']
+            return self._root_folder_id
+        
+        raise ValueError(f"Root path '{self.root_path}' not found or is not a folder")
+    
+    def _translate_path(self, path):
+        """Translate FTP path to actual Google Drive path"""
+        if not self.root_path:
+            return path
+        
+        # Remove leading slash from path
+        path = path.lstrip('/')
+        
+        # If empty, return root path
+        if not path:
+            return self.root_path
+        
+        # Combine root path with the requested path
+        return self.root_path + '/' + path
     
     def _is_cache_valid(self, cache_time):
         """Check if cache entry is still valid"""
@@ -52,10 +86,11 @@ class GoogleDriveFileSystem:
     def invalidate_cache(self, path=None):
         """Invalidate cache for a specific path or all cache"""
         if path:
-            self._path_cache.pop(path, None)
-            self._dir_cache.pop(path, None)
+            actual_path = self._translate_path(path)
+            self._path_cache.pop(actual_path, None)
+            self._dir_cache.pop(actual_path, None)
             # Also invalidate parent directory listing
-            parent = '/'.join(path.rstrip('/').split('/')[:-1]) or '/'
+            parent = '/'.join(actual_path.rstrip('/').split('/')[:-1]) or '/'
             self._dir_cache.pop(parent, None)
         else:
             self._path_cache.clear()
@@ -68,19 +103,25 @@ class GoogleDriveFileSystem:
         value = value.replace("'", "\\'")
         return value
     
-    def _get_file_by_path(self, path):
-        """Get file/folder by path"""
+    def _get_file_by_path_internal(self, path, use_root_offset=True):
+        """Internal method to get file/folder by path"""
+        # Translate path if using root offset
+        if use_root_offset:
+            actual_path = self._translate_path(path)
+        else:
+            actual_path = path
+        
         # Check cache first
-        cached = self._get_cached_path(path)
+        cached = self._get_cached_path(actual_path)
         if cached:
             return cached
         
-        if path == '/' or path == '':
+        if actual_path == '/' or actual_path == '':
             root_info = {'id': 'root', 'name': '/', 'mimeType': 'application/vnd.google-apps.folder'}
-            self._cache_path(path, root_info)
+            self._cache_path(actual_path, root_info)
             return root_info
         
-        parts = path.strip('/').split('/')
+        parts = actual_path.strip('/').split('/')
         parent_id = 'root'
         current_path = ''
         
@@ -113,6 +154,10 @@ class GoogleDriveFileSystem:
         
         return file_info
     
+    def _get_file_by_path(self, path):
+        """Get file/folder by path (public method with root offset)"""
+        return self._get_file_by_path_internal(path, use_root_offset=True)
+    
     def _get_file_by_id(self, file_id):
         """Get file metadata by ID"""
         try:
@@ -126,8 +171,9 @@ class GoogleDriveFileSystem:
     
     def list_directory(self, path):
         """List files in a directory"""
+        actual_path = self._translate_path(path)
         # Check cache first
-        cached = self._get_cached_dir(path)
+        cached = self._get_cached_dir(actual_path)
         if cached is not None:
             return cached
         
@@ -148,11 +194,11 @@ class GoogleDriveFileSystem:
         files = results.get('files', [])
         
         # Cache the directory listing
-        self._cache_dir(path, files)
+        self._cache_dir(actual_path, files)
         
         # Also cache individual file paths
         for file in files:
-            file_path = path.rstrip('/') + '/' + file['name']
+            file_path = actual_path.rstrip('/') + '/' + file['name']
             self._cache_path(file_path, file)
         
         return files
@@ -198,44 +244,100 @@ class GoogleDriveFileSystem:
         fh.seek(0)
         return fh
     
-    def write_file(self, path, file_obj):
+    def write_file(self, path, file_obj_or_path):
         """Write file content"""
+        import sys
+        
         parts = path.strip('/').split('/')
         filename = parts[-1]
         parent_path = '/' + '/'.join(parts[:-1]) if len(parts) > 1 else '/'
         
+        print(f"[DEBUG] write_file called: path={path}, parent_path={parent_path}", file=sys.stderr)
+        
         # Get parent folder
         parent_info = self._get_file_by_path(parent_path)
         if not parent_info:
+            print(f"[ERROR] Parent folder not found: {parent_path}", file=sys.stderr)
             return False
+        
+        print(f"[DEBUG] Parent folder ID: {parent_info['id']}", file=sys.stderr)
         
         # Check if file exists
         existing_file = self._get_file_by_path(path)
         
         file_metadata = {'name': filename}
-        media = MediaFileUpload(file_obj, resumable=True)
         
+        # Handle both file objects and file paths
+        if isinstance(file_obj_or_path, str):
+            # It's a file path
+            print(f"[DEBUG] Uploading from file path: {file_obj_or_path}", file=sys.stderr)
+            media = MediaFileUpload(file_obj_or_path, resumable=True)
+        else:
+            # It's a file object - use it directly
+            file_path = file_obj_or_path.name if hasattr(file_obj_or_path, 'name') else str(file_obj_or_path)
+            print(f"[DEBUG] Uploading from file object: {file_path}", file=sys.stderr)
+            media = MediaFileUpload(file_path, resumable=True)
+        
+        def _get_local_size():
+            if isinstance(file_obj_or_path, str):
+                return os.path.getsize(file_obj_or_path)
+            name = getattr(file_obj_or_path, 'name', None)
+            if name and os.path.exists(name):
+                return os.path.getsize(name)
+            return 0
+
         try:
             if existing_file:
-                # Update existing file
-                self.service.files().update(
+                # Update existing file and request metadata for cache.
+                print(f"[DEBUG] Updating existing file ID: {existing_file['id']}", file=sys.stderr)
+                updated = self.service.files().update(
                     fileId=existing_file['id'],
-                    media_body=media
+                    media_body=media,
+                    fields="id, name, mimeType, size, modifiedTime, createdTime"
                 ).execute()
+                file_info = updated or existing_file
+                print(f"[DEBUG] File updated successfully", file=sys.stderr)
             else:
-                # Create new file
+                # Create new file and request metadata for cache.
                 file_metadata['parents'] = [parent_info['id']]
-                self.service.files().create(
+                print(f"[DEBUG] Creating new file: {filename} in parent {parent_info['id']}", file=sys.stderr)
+                file_info = self.service.files().create(
                     body=file_metadata,
                     media_body=media,
-                    fields='id'
+                    fields="id, name, mimeType, size, modifiedTime, createdTime"
                 ).execute()
-            
-            # Invalidate cache for this path and parent directory
-            self.invalidate_cache(path)
+                print(f"[DEBUG] File created successfully with ID: {file_info.get('id')}", file=sys.stderr)
+
+            # Optimistically cache metadata so MFMT/stat won't fail immediately.
+            now_iso = datetime.utcnow().replace(microsecond=0).isoformat() + 'Z'
+            size = _get_local_size()
+            existing_id = existing_file['id'] if existing_file else None
+            existing_mime = existing_file.get('mimeType') if existing_file else 'application/octet-stream'
+            cached = {
+                'id': file_info.get('id') if file_info else existing_id,
+                'name': filename,
+                'mimeType': file_info.get('mimeType') if file_info else existing_mime,
+                'size': file_info.get('size', size) if file_info else size,
+                'modifiedTime': file_info.get('modifiedTime', now_iso) if file_info else now_iso,
+                'createdTime': file_info.get('createdTime', now_iso) if file_info else now_iso
+            }
+            if cached['id']:
+                actual_path = self._translate_path(path)
+                self._cache_path(actual_path, cached)
+
+            # Invalidate parent directory listing so new file appears in listings.
+            self.invalidate_cache(parent_path)
+            print(f"[DEBUG] Upload completed successfully for {path}", file=sys.stderr)
             return True
         except HttpError as e:
-            print(f"Error writing file: {e}")
+            print(f"[ERROR] Error writing file {path}: {e}", file=sys.stderr)
+            import traceback
+            traceback.print_exc()
+            return False
+        except Exception as e:
+            print(f"[ERROR] Unexpected error writing file {path}: {e}", file=sys.stderr)
+            import traceback
+            traceback.print_exc()
             return False
     
     def delete_file(self, path):
