@@ -14,6 +14,8 @@
 
 ---
 
+sftp-server google-drive python file-transfer oauth2 cloud-storage sftp-client file-management
+
 ## Features
 
 - OAuth2 authentication for Google Drive
@@ -65,6 +67,10 @@ Use the menu to edit settings (recommended):
 drivesftp
 # then choose: 6) Settings (.env)
 ```
+
+<div align="center">
+  <img src="./images/terminal.png" width="600" alt="Drive as SFTP menu showcase" />
+</div>
 
 Manual `.env` keys (if needed):
 
