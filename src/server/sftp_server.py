@@ -131,6 +131,15 @@ class _GoogleDriveSFTPInterface(paramiko.SFTPServerInterface):
         # Ignore chmod/utime requests to avoid client errors.
         return paramiko.SFTP_OK
 
+    def chmod(self, path, mode):
+        return paramiko.SFTP_OK
+
+    def chown(self, path, uid, gid):
+        return paramiko.SFTP_OK
+
+    def utime(self, path, times):
+        return paramiko.SFTP_OK
+
 
 class _PasswordAuthServer(paramiko.ServerInterface):
     def __init__(self, username, password, gdrive_fs):
