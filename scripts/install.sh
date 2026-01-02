@@ -127,6 +127,14 @@ while true; do
 
   case "$choice" in
     1)
+      if [[ ! -f "$APP_DIR/.env" && -f "$APP_DIR/.env.example" ]]; then
+        run_root cp "$APP_DIR/.env.example" "$APP_DIR/.env"
+        run_root chown "$SERVICE_USER:$SERVICE_USER" "$APP_DIR/.env"
+      fi
+      if [[ ! -f "$APP_DIR/.env" ]]; then
+        echo "Missing $APP_DIR/.env. Create it or copy from .env.example."
+        continue
+      fi
       if [[ ! -f "$APP_DIR/credentials.json" ]]; then
         echo "Missing credentials.json in $APP_DIR."
         echo "Paste the full credentials.json content now, then press Ctrl-D."
