@@ -54,33 +54,6 @@ drivesftp
 
 ### Start the SFTP server
 
-```bash
-python main.py
-```
-
-On the first run, a browser window will open asking you to authorize the application to access your Google Drive. After authorization, a `token.json` file will be created for future sessions.
-
-If you're running on a remote server, keep `OAUTH_CONSOLE=true` so the app prints an authorization URL and prompts for the code in the terminal.
-
-## Install as a Linux service (systemd)
-
-This installs the app under `/opt/drive-as-ftp`, creates a `driveftp` system user, and registers a `drivesftp` service.
-
-```bash
-sudo bash scripts/install.sh
-```
-
-Direct install:
-
-```bash
-curl -fsSL "https://raw.githubusercontent.com/nooblk-98/drive-as-ftp/refs/heads/main/scripts/install.sh" | sudo bash
-
-```
-
-Note: the direct install uses `git` to clone the repo on the server.
-
-Copy your `credentials.json` into `/opt/drive-as-ftp` before using the Authenticate menu option.
-
 After installation, run the menu:
 
 ```bash
