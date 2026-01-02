@@ -115,7 +115,7 @@ After installation, run the menu:
 driveftp
 ```
 
-Menu options include start/stop, authenticate, status, logs, and settings.
+Menu options include start/stop, authenticate, status, logs, settings, update, reinstall, and uninstall.
 
 ### Connect with an FTP client
 

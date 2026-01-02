@@ -95,6 +95,9 @@ while true; do
   echo "4) Status"
   echo "5) Logs (tail)"
   echo "6) Settings (.env)"
+  echo "7) Update app"
+  echo "8) Reinstall service"
+  echo "9) Uninstall"
   echo "0) Exit"
   echo -n "Select: "
   read -r choice
@@ -129,6 +132,35 @@ while true; do
       ;;
     6)
       run_root "${EDITOR:-nano}" "$APP_DIR/.env"
+      ;;
+    7)
+      if [[ ! -d "$APP_DIR/.git" ]]; then
+        echo "No git repo in $APP_DIR. Update requires git."
+        continue
+      fi
+      run_as_service_user "cd $APP_DIR && git pull --ff-only"
+      run_root systemctl restart "$APP_NAME"
+      ;;
+    8)
+      if [[ ! -x "$APP_DIR/scripts/install.sh" ]]; then
+        echo "Installer not found at $APP_DIR/scripts/install.sh"
+        continue
+      fi
+      run_root bash "$APP_DIR/scripts/install.sh"
+      ;;
+    9)
+      read -r -p "Uninstall service and remove $APP_DIR? [y/N] " confirm
+      if [[ "${confirm:-N}" != "y" && "${confirm:-N}" != "Y" ]]; then
+        continue
+      fi
+      run_root systemctl stop "$APP_NAME" || true
+      run_root systemctl disable "$APP_NAME" || true
+      run_root rm -f "$SERVICE_FILE"
+      run_root systemctl daemon-reload
+      run_root rm -f "/usr/local/bin/$APP_NAME"
+      run_root rm -rf "$APP_DIR"
+      echo "Uninstalled."
+      exit 0
       ;;
     0)
       exit 0
