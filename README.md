@@ -99,6 +99,24 @@ On the first run, a browser window will open asking you to authorize the applica
 
 If you're running on a remote server, keep `OAUTH_CONSOLE=true` so the app prints an authorization URL and prompts for the code in the terminal.
 
+## Install as a Linux service (systemd)
+
+This installs the app under `/opt/drive-as-ftp`, creates a `driveftp` system user, and registers a `driveftp` service.
+
+```bash
+sudo bash scripts/install.sh
+```
+
+Copy your `credentials.json` into `/opt/drive-as-ftp` before using the Authenticate menu option.
+
+After installation, run the menu:
+
+```bash
+driveftp
+```
+
+Menu options include start/stop, authenticate, status, logs, and settings.
+
 ### Connect with an FTP client
 
 You can use any FTP client (FileZilla, WinSCP, command-line ftp, etc.) with these settings:
