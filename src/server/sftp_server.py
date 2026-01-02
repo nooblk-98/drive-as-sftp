@@ -38,6 +38,18 @@ class _DriveSFTPHandle(paramiko.SFTPHandle):
             self.readfile.close()
         return paramiko.SFTP_OK
 
+    def setstat(self, attr):
+        return paramiko.SFTP_OK
+
+    def chmod(self, mode):
+        return paramiko.SFTP_OK
+
+    def chown(self, uid, gid):
+        return paramiko.SFTP_OK
+
+    def utime(self, times):
+        return paramiko.SFTP_OK
+
 
 class _GoogleDriveSFTPInterface(paramiko.SFTPServerInterface):
     def __init__(self, server, gdrive_fs):
