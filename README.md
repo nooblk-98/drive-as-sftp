@@ -1,7 +1,18 @@
-# Google Drive as SFTP Server
+<div align="center">
+  <img src="./images/logo.png" width="360" alt="Drive as SFTP logo" />
 
-An SFTP server backed by Google Drive. Connect with any SFTP client and manage
-files directly in your Drive.
+  # Drive as SFTP
+
+  An SFTP server backed by Google Drive. Connect with any SFTP client and manage files directly in your Drive.
+
+  <div>
+    <a href="https://github.com/nooblk-98/drive-as-ftp/releases"><img src="https://img.shields.io/github/v/release/nooblk-98/drive-as-ftp?logo=github" alt="Latest release" /></a>
+    <a href="https://github.com/nooblk-98/drive-as-ftp/actions/workflows/release.yml"><img src="https://github.com/nooblk-98/drive-as-ftp/actions/workflows/release.yml/badge.svg" alt="Release" /></a>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT" /></a>
+  </div>
+</div>
+
+---
 
 ## Features
 
