@@ -107,6 +107,12 @@ This installs the app under `/opt/drive-as-ftp`, creates a `driveftp` system use
 sudo bash scripts/install.sh
 ```
 
+Direct install:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/nooblk-98/drive-as-ftp/refs/heads/main/scripts/install.sh | sudo bash
+```
+
 Copy your `credentials.json` into `/opt/drive-as-ftp` before using the Authenticate menu option.
 
 After installation, run the menu:
