@@ -1,47 +1,52 @@
 # Google Drive as SFTP Server
 
-A Python application that creates an SFTP server interface for your Google Drive, allowing you to access and manage your Google Drive files using any SFTP client.
+An SFTP server backed by Google Drive. Connect with any SFTP client and manage
+files directly in your Drive.
 
 ## Features
 
-- Secure Google Drive authentication using OAuth2
-- Browse Google Drive files and folders via SFTP
-- Upload files to Google Drive through SFTP
-- Download files from Google Drive through SFTP
-- Rename and delete files/folders
-- Create new folders
+- OAuth2 authentication for Google Drive
+- Browse, upload, download, rename, delete, and create folders via SFTP
+- Single-port SFTP (default `2121`)
 
 ## Prerequisites
 
-- Python 3.7 or higher
+- Python 3.7+
 - Google Cloud account
 - Google Drive API credentials
 
 ## Installation
 
-Direct install:
+Direct install (recommended):
 
 ```bash
 curl -fsSL "https://raw.githubusercontent.com/nooblk-98/drive-as-ftp/refs/heads/main/scripts/install.sh" | sudo bash
-
 ```
 
-### 3. Set up Google Drive API
+Manual install:
 
-1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a new project or select an existing one
-3. Enable the **Google Drive API**:
-   - Navigate to "APIs & Services" > "Library"
-   - Search for "Google Drive API"
-   - Click "Enable"
-4. Create OAuth 2.0 credentials:
-   - Go to "APIs & Services" > "Credentials"
-   - Click "Create Credentials" > "OAuth client ID"
-   - Select "Desktop app" as the application type
-   - Download the credentials JSON file
-5. Save the downloaded file as `credentials.json` in the project directory
+```bash
+git clone https://github.com/yourusername/drive-as-ftp.git
+cd drive-as-ftp
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
 
-### 4. Configure the application
+If you see `error: externally-managed-environment` (PEP 668), you must use a
+virtual environment.
+
+## Google Drive API setup
+
+1. Go to https://console.cloud.google.com/
+2. Create a project and enable **Google Drive API**
+3. Create OAuth 2.0 credentials:
+   - APIs & Services > Credentials
+   - Create Credentials > OAuth client ID
+   - Application type: Desktop app
+4. Download the JSON and save it as `credentials.json`
+
+## Configuration
 
 Use the menu to edit settings (recommended):
 
@@ -50,9 +55,32 @@ drivesftp
 # then choose: 6) Settings (.env)
 ```
 
-## Usage
+Manual `.env` keys (if needed):
 
-### Start the SFTP server
+```
+# SFTP Server Configuration
+SFTP_HOST=0.0.0.0
+SFTP_PORT=2121
+SFTP_USERNAME=admin
+SFTP_PASSWORD=admin123
+SFTP_ROOT_PATH=/
+SFTP_HOST_KEY=config/sftp_host_key
+
+# Google Drive Settings
+CREDENTIALS_FILE=credentials.json
+TOKEN_FILE=token.json
+OAUTH_CONSOLE=true
+
+# Logging Settings
+LOG_LEVEL=INFO
+LOG_FILE=logs/sftp_server.log
+
+# Performance Settings
+CACHE_ENABLED=true
+CACHE_TIMEOUT=60
+```
+
+## Usage
 
 After installation, run the menu:
 
@@ -60,86 +88,59 @@ After installation, run the menu:
 drivesftp
 ```
 
-Menu options include start/stop, authenticate, status, logs, settings, update, reinstall, and uninstall.
+Menu options include start/stop, authenticate, status, logs, settings, update,
+reinstall, and uninstall.
 
 ### Connect with an SFTP client
 
-You can use any SFTP client (FileZilla, WinSCP, command-line sftp, etc.) with these settings:
+Use any SFTP client (FileZilla, WinSCP, or command-line `sftp`) with:
 
-- **Host:** `localhost` (or your server IP)
-- **Port:** `2121` (or the port you configured)
-- **Username:** `admin` (or the username you configured)
-- **Password:** `admin123` (or the password you configured)
-- **Protocol:** SFTP
+- Host: `your.server.ip`
+- Port: `2121`
+- Username: `admin`
+- Password: `admin123`
+- Protocol: SFTP
 
-#### Example using command-line SFTP:
+Example:
 
 ```bash
-sftp -P 2121 admin@localhost
-# Enter username and password when prompted
+sftp -P 2121 admin@your.server.ip
 ```
 
-#### Example using FileZilla:
+## How it works
 
-1. Open FileZilla
-2. Enter the connection details in the Quickconnect bar
-3. Click "Quickconnect"
+1. OAuth2 authenticates with Google Drive API
+2. Paramiko provides the SFTP server
+3. A filesystem bridge maps SFTP operations to Google Drive API calls
 
+## Security notes
 
-## How It Works
-
-1. **Authentication:** The application uses OAuth2 to authenticate with Google Drive API
-2. **SFTP Server:** A custom SFTP server is created using `paramiko`
-3. **Filesystem Bridge:** The filesystem wrapper translates SFTP operations to Google Drive API calls
-4. **File Operations:** 
-   - Downloads are streamed from Google Drive
-   - Uploads use temporary files before uploading to Google Drive
-   - Directory operations map to Google Drive folder operations
-
-## Security Notes
-
-⚠️ **Important Security Considerations:**
-
-- SFTP runs over SSH and is encrypted in transit.
-- For production use, consider:
-  - Using SSH keys for authentication
-  - Implementing strong passwords
-  - Restricting access by IP address
-  - Running behind a VPN or firewall
-- Keep your `credentials.json` and `token.json` files secure
-- Never commit these files to version control (they're in `.gitignore`)
+- SFTP runs over SSH and is encrypted in transit
+- Use strong passwords or SSH keys for production
+- Keep `credentials.json` and `token.json` private
+- Never commit credentials to source control
 
 ## Limitations
 
-- Google Docs, Sheets, and Slides cannot be downloaded directly (they're Google-native formats)
-- Large file uploads/downloads may take time
-- SFTP is encrypted, but Google Drive API rate limits still apply
-- Rate limits apply based on Google Drive API quotas
+- Google Docs/Sheets/Slides are not downloadable as files
+- Large uploads can be slow due to Drive API limits
 
 ## Troubleshooting
 
-### "Credentials file not found" error
-Make sure you've downloaded the OAuth credentials from Google Cloud Console and saved them as `credentials.json`.
+### Credentials file not found
+Make sure `credentials.json` exists in the app directory.
 
 ### Authentication browser doesn't open
-The application will print a URL in the console. Copy and paste it into your browser manually.
-
-### "Permission denied" errors
-Check that your Google Cloud project has the Google Drive API enabled and your OAuth consent screen is properly configured.
+Use console auth: keep `OAUTH_CONSOLE=true` and follow the printed URL.
 
 ### SFTP connection refused
-- Check that the port (default 2121) is not blocked by your firewall
-- Verify the SFTP_HOST and SFTP_PORT settings in your `.env` file
-
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
+- Check that port `2121` is open on your firewall/security group
+- Verify `SFTP_HOST` and `SFTP_PORT` in `.env`
 
 ## License
 
-This project is provided as-is for educational and personal use.
+Provided as-is for educational and personal use.
 
 ## Disclaimer
 
-This is an unofficial project and is not affiliated with or endorsed by Google. Use at your own risk.
+This is an unofficial project and is not affiliated with or endorsed by Google.
